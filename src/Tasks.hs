@@ -101,7 +101,7 @@ getDaysSinceEpoch day month year =
 
 georgianDateToUnix :: Date -> UnixTimeStamp
 georgianDateToUnix (Date (DSecs seconds) (DDate days months years )) = UnixTimeStamp $
-    seconds + getDaysSinceEpoch days months years * 24 * 60 * 60 -- todo properly implement
+    seconds + getDaysSinceEpoch days months years * 24 * 60 * 60
 
 getCurrentYear :: () -> Int
 getCurrentYear () = 2024 -- todo implement
