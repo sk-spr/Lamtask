@@ -20,7 +20,7 @@ split  = splitInner Nothing
 splitInner :: Eq a => Maybe [a] -> [a] -> a -> [[a]]
 splitInner ctx s delim =
     case s of
-        [] -> 
+        [] ->
             case ctx of
                 Just context ->
                     [context]
@@ -42,7 +42,7 @@ getTimeStamp dateTimeStr =
         parts = split dateTimeStr '/'
     in
         case parts of
-            [time, date] -> 
+            [time, date] ->
                 case (parseTime time, parseDate date) of
                     (Right t, Right d) ->
                         Right $ georgianDateToUnix (Date t d)
@@ -56,7 +56,7 @@ parseTime :: String -> Either String DSecs
 parseTime s =
     let
         parts = split s ':'
-    in 
+    in
     case parts of
         [hours, minutes]->
             let
@@ -69,9 +69,39 @@ parseTime s =
         _ ->
             Left "Unparseable time, should be in the format \"[h]h:[m]m\""
 
+isLeapYear :: Int -> Bool
+isLeapYear y = ((mod y 4 == 0) && (mod y 100 /= 0)) || mod y 400 == 0
+
+daysOfMonth :: Int -> Int -> Int
+daysOfMonth y m =
+    case m of
+        1 -> 31
+        2 -> if isLeapYear y then 29 else 28
+        3 -> 31
+        4 -> 30
+        5 -> 31
+        6 -> 30
+        7 -> 31
+        8 -> 31
+        9 -> 30
+        10 -> 31
+        11 -> 30
+        12 -> 31
+        _ -> 0
+
+getDaysSinceEpoch :: Int -> Int -> Int -> Int
+getDaysSinceEpoch day month year =
+    let
+        genCompleteYear y = if isLeapYear y then 366 else 365
+        getDaysBefore y = sum $ map genCompleteYear [1970..y-1]
+        genIncompleteYear days months y =
+            days - 1 + sum (map (daysOfMonth y) [1..months-1])
+    in
+        getDaysBefore year + genIncompleteYear day month year
+
 georgianDateToUnix :: Date -> UnixTimeStamp
 georgianDateToUnix (Date (DSecs seconds) (DDate days months years )) = UnixTimeStamp $
-    seconds + (days - 1) * 24 * 60 * 60 + (months - 1) * 30 * 24 * 60 * 60 + (years - 1970) * 365 * 24 * 60 * 60 -- todo properly implement
+    seconds + getDaysSinceEpoch days months years * 24 * 60 * 60 -- todo properly implement
 
 getCurrentYear :: () -> Int
 getCurrentYear () = 2024 -- todo implement
