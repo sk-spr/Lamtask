@@ -7,13 +7,14 @@ import Control.Exception ( SomeException(..))
 newtype DSecs = DSecs Int deriving Show
 data DDate = DDate Int Int Int deriving Show
 
-data Date = Date DSecs DDate
+data Date = Date DSecs DDate deriving Show
 newtype UnixTimeStamp = UnixTimeStamp Int deriving Show
 
 data Task =
     Event UnixTimeStamp UnixTimeStamp String
     | Todo String
     | TimedTodo UnixTimeStamp String
+    deriving Show
 
 split :: Eq a => [a] -> a -> [[a]]
 split  = splitInner Nothing
@@ -89,19 +90,71 @@ daysOfMonth y m =
         12 -> 31
         _ -> 0
 
+genCompleteYear :: Int -> Int
+genCompleteYear y = if isLeapYear y then 366 else 365
+
+getDaysBefore :: Int -> Int
+getDaysBefore y = sum $ map genCompleteYear [1970..y-1]
+
+genIncompleteYear :: Int -> Int -> Int -> Int
+genIncompleteYear days months y =
+    days - 1 + sum (map (daysOfMonth y) [1..months-1])
+
 getDaysSinceEpoch :: Int -> Int -> Int -> Int
 getDaysSinceEpoch day month year =
-    let
-        genCompleteYear y = if isLeapYear y then 366 else 365
-        getDaysBefore y = sum $ map genCompleteYear [1970..y-1]
-        genIncompleteYear days months y =
-            days - 1 + sum (map (daysOfMonth y) [1..months-1])
-    in
-        getDaysBefore year + genIncompleteYear day month year
+    getDaysBefore year + genIncompleteYear day month year
 
 georgianDateToUnix :: Date -> UnixTimeStamp
 georgianDateToUnix (Date (DSecs seconds) (DDate days months years )) = UnixTimeStamp $
     seconds + getDaysSinceEpoch days months years * 24 * 60 * 60
+
+-- you are now entering the HACKY ZONE
+
+getYear :: Int -> Int -> Int
+getYear current timestamp =
+    let
+        (UnixTimeStamp y) = georgianDateToUnix (Date (DSecs 0) (DDate 1 1 current))
+    in
+        if  y > timestamp
+        then
+            current - 1
+        else
+            getYear (current+1) timestamp
+
+getMonth :: Int -> Int -> Int -> Int
+getMonth current timestamp year=
+    let
+        (UnixTimeStamp m) = georgianDateToUnix (Date (DSecs 0) (DDate 1 current year))
+    in
+        if m > timestamp
+            then
+                current - 1
+            else
+                getMonth (current+1) timestamp year
+
+getDay :: Int -> Int -> Int -> Int -> Int
+getDay current timestamp year month=
+    let
+        (UnixTimeStamp m) = georgianDateToUnix (Date (DSecs 0) (DDate current month year))
+    in
+        if m > timestamp
+            then
+                current - 1
+            else
+                getMonth (current+1) timestamp year
+
+unixToGeorgianDate :: UnixTimeStamp -> Date
+unixToGeorgianDate (UnixTimeStamp secs) =
+    let
+        year = getYear 1971 secs
+        month = getMonth 2 secs year
+        day = getDay 2 secs year month
+        (UnixTimeStamp dateSecs) = georgianDateToUnix (Date (DSecs 0) (DDate day month year))
+        remainder = secs - dateSecs
+    in
+        Date (DSecs remainder) (DDate day month year)
+
+-- thank you for visiting the HACKY ZONE, come again!
 
 getCurrentYear :: () -> Int
 getCurrentYear () = 2024 -- todo implement
@@ -130,3 +183,62 @@ parseDate s =
                 dateFromMaybes days months ""
             _ ->
                 Left "Could not parse date format. Needs to be [d]d.[m]m[.yyyy]"
+
+
+-- storage parsing
+
+parseTasksFrom :: String -> [Task]
+parseTasksFrom = parseTaskList . lines
+
+parseTaskList :: [String] -> [Task]
+parseTaskList txts =
+    case txts of
+        [] -> []
+        currentLine : rest ->
+            parseTask currentLine : parseTaskList rest
+
+parseTask :: String -> Task
+parseTask line= 
+    case split line '°' of
+        [taskType, taskDetails] ->
+            (case taskType of
+                "Event" ->
+                    parseTaskEvent
+                "Todo" ->
+                    parseTaskTodo
+                "TimedTodo" ->
+                    parseTaskTimedTodo) taskDetails
+        _ -> Todo ("Fix the config, something is not working on the line \"" <> line <> "\"")
+
+parseTaskEvent :: String -> Task
+parseTaskEvent s =
+    case split s '$' of
+        [startTime, endTime, description] ->
+            let 
+                start = UnixTimeStamp $ fromMaybe 0 (readMaybe startTime :: Maybe Int)
+                end = UnixTimeStamp $ fromMaybe 0 (readMaybe endTime :: Maybe Int)
+            in
+                Event start end description
+        _ -> Todo "Fix the config, something is not working."
+
+parseTaskTodo :: String -> Task
+parseTaskTodo = Todo
+
+parseTaskTimedTodo :: String -> Task
+parseTaskTimedTodo s =
+    case split s '$' of
+        [dueDate, description] ->
+            let 
+                due = UnixTimeStamp $ fromMaybe 0 (readMaybe dueDate :: Maybe Int)
+            in
+                TimedTodo due description
+
+serializeTask :: Task -> String
+serializeTask t =
+    case t of
+        Event (UnixTimeStamp start) (UnixTimeStamp end) description ->
+            "Event°" <> show start <> "$" <> show end <> "$" <> description <> "\n"
+        Todo description ->
+            "Todo°" <> description <> "\n"
+        TimedTodo (UnixTimeStamp due) description ->
+            "TimedTodo°" <> show due <> "$" <> description <> "\n"
