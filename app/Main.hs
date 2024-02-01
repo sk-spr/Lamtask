@@ -1,8 +1,8 @@
 module Main where
 
-import qualified MyLib (someFunc)
-
+import System.Environment (getArgs)
+import qualified Tasks
 main :: IO ()
 main = do
-  putStrLn "Hello, Haskell!"
-  MyLib.someFunc
+    line <- getLine
+    print $ Tasks.getTimeStamp line
