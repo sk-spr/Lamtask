@@ -9,6 +9,11 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-haskell@v1
+        with:
+          ghc-version: '8.10.3'
+          cabal-version: '3.2'
       - name: Build - Install dependencies
         if: startsWith(github.ref, 'refs/tags/')
         run: |
