@@ -17,6 +17,19 @@ printTaskList tasks =
         Nothing ->
             putStrLn "No tasks, yay!"
 
+timeStampOrZero :: String -> Tasks.UnixTimeStamp
+timeStampOrZero str = case Tasks.getTimeStamp str of
+    Right stamp -> stamp
+    _ -> Tasks.UnixTimeStamp 0
+
+printHelp :: IO ()
+printHelp = do
+    putStrLn "Usage:"
+    putStrLn "Lamtask -> print stored tasks"
+    putStrLn "Lamtask add-todo description -> create a simple todo with description"
+    putStrLn "Lamtask add-timed hh:mm/[d]d.[m]m.[yyyy] description -> create a timed todo with due date and description"
+    putStrLn "Lamtask add-event hh:mm/[d]d.[m]m.[yyyy] hh:mm/[d]d.[m]m.[yyyy] description-> create a calendar-style event from the first time to the second time with description"
+
 main :: IO ()
 main = do
     args <- getArgs
@@ -24,6 +37,7 @@ main = do
     let
         saveEvent event =
             do
+                putStrLn ("Adding " <> Tasks.prettyPrint event 0)
                 Config.saveTasks "./tasks.txt.new" (event : fromMaybe [] storedTasks)
                 oldFileExists <- doesFileExist "./tasks.txt.old"
                 if oldFileExists then
@@ -47,11 +61,11 @@ main = do
                 saveEvent (Tasks.Todo desc)
             ["add-event", start, end, desc] ->
                 let
-                    timeStampOrZero str = case Tasks.getTimeStamp str of
-                        Right stamp -> stamp
-                        _ -> Tasks.UnixTimeStamp 0
                     startTime = timeStampOrZero start
                     endTime = timeStampOrZero end
                     event = Tasks.Event startTime endTime desc
                 in
                     saveEvent event
+            ["add-timed", due, desc] -> do
+                saveEvent (Tasks.TimedTodo (timeStampOrZero due) desc)
+            _ -> printHelp
