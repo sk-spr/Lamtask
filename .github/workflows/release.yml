@@ -9,7 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         if: startsWith(github.ref, 'refs/tags/')
-      - uses: actions/setup-haskell@v1
+      - uses: haskell-actions/setup@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           ghc-version: '9.4.8'
