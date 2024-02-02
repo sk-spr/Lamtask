@@ -242,3 +242,38 @@ serializeTask t =
             "Todo°" <> description <> "\n"
         TimedTodo (UnixTimeStamp due) description ->
             "TimedTodo°" <> show due <> "$" <> description <> "\n"
+
+prettyTime :: DSecs -> String
+prettyTime (DSecs secs) =
+    let
+        hours = div secs 3600
+        minutes = div (secs - 3600 * hours) 60
+        hourStr = case show hours of
+            [digit] -> ['0', digit]
+            digits -> digits
+        minStr = case show minutes of
+            [digit] -> ['0', digit]
+            digits -> digits
+    in
+        hourStr <> ":" <> minStr
+
+prettyDate :: DDate -> String
+prettyDate (DDate day month year) =
+    show day <> "." <> show month <> "." <> show year
+
+prettyPrint :: Task -> Int -> String
+prettyPrint t n= "("<>show n<>") ->" <>
+    case t of
+        Event startStamp endStamp description ->
+            let 
+                Date start startDate = unixToGeorgianDate startStamp
+                Date end endDate = unixToGeorgianDate endStamp
+            in
+                prettyTime start <> " on " <> prettyDate startDate <> " to " <> prettyTime end <> " on " <> prettyDate endDate <> " is an event called \"" <> description <> "\".\n"
+        Todo description ->
+            "To do: " <> description <> "\n"
+        TimedTodo dueStamp description ->
+            let
+                Date dueTime dueDate = unixToGeorgianDate dueStamp
+            in
+                "To do: " <> description <> " due " <> prettyTime dueTime <> " on " <> prettyDate dueDate <> "\n"
