@@ -80,7 +80,8 @@ executable Lamtask
     build-depends:
         base ^>=4.15.1.0,
         Lamtask,
-        directory
+        directory,
+        unix-time
 
     -- Directories containing source files.
     hs-source-dirs:   app

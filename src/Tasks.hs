@@ -141,14 +141,14 @@ getDay current timestamp year month=
             then
                 current - 1
             else
-                getMonth (current+1) timestamp year
+                getDay (current+1) timestamp year month
 
 unixToGeorgianDate :: UnixTimeStamp -> Date
 unixToGeorgianDate (UnixTimeStamp secs) =
     let
-        year = getYear 1971 secs
-        month = getMonth 2 secs year
-        day = getDay 2 secs year month
+        year = getYear 1970 secs
+        month = getMonth 1 secs year
+        day = getDay 1 secs year month
         (UnixTimeStamp dateSecs) = georgianDateToUnix (Date (DSecs 0) (DDate day month year))
         remainder = secs - dateSecs
     in
@@ -261,8 +261,8 @@ prettyDate :: DDate -> String
 prettyDate (DDate day month year) =
     show day <> "." <> show month <> "." <> show year
 
-prettyPrint :: Task -> Int -> String
-prettyPrint t n= "("<>show n<>") ->" <>
+prettyPrint :: (Task,  Int) -> String
+prettyPrint (t, n)= "("<>show n<>") ->" <>
     case t of
         Event startStamp endStamp description ->
             let 

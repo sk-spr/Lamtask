@@ -2,18 +2,40 @@ module Main where
 import System.Environment (getArgs)
 import System.Directory (renameFile, removeFile, doesFileExist)
 import Data.Maybe (fromMaybe)
+import  qualified Data.UnixTime (UnixTime(..), getUnixTime)
 import qualified Tasks
 import qualified Config
+import Foreign.C (CTime(..))
 
 -- from https://stackoverflow.com/questions/16191824/index-of-element-in-list-in-haskell
 mapInd :: (a -> Int -> b) -> [a] -> [b]
 mapInd f l = zipWith f l [1..]
 
+indexize :: [a] -> [(a, Int)]
+indexize l = zip l [1..]
+
 printTaskList :: Maybe [Tasks.Task] -> IO ()
-printTaskList tasks =
+printTaskList tasks = do
+    (Data.UnixTime.UnixTime (CTime currentUnixSeconds) _) <- Data.UnixTime.getUnixTime
     case tasks of
-        Just t ->
-            putStrLn $ mconcat $ mapInd Tasks.prettyPrint t
+        Just t -> do
+            let 
+                indexed = indexize t
+                events = filter (\(task, _) -> case task of
+                        Tasks.Event _ (Tasks.UnixTimeStamp endSecs) _ -> endSecs > fromIntegral currentUnixSeconds
+                        _ -> False
+                    ) indexed
+                todos = filter (\(task, _) -> case task of
+                    Tasks.Todo _ -> True
+                    Tasks.TimedTodo {} -> True
+                    _ -> False) indexed
+            case (events, todos) of
+                ([],[]) -> putStrLn "Nothing coming up and no current Todos!"
+                (events, todos) -> do
+                    putStrLn "Events coming up: "
+                    putStrLn $ mconcat $ map Tasks.prettyPrint events
+                    putStrLn "Todos: "
+                    putStrLn $ mconcat $ map Tasks.prettyPrint todos
         Nothing ->
             putStrLn "No tasks, yay!"
 
@@ -37,7 +59,7 @@ main = do
     let
         saveEvent event =
             do
-                putStrLn ("Adding " <> Tasks.prettyPrint event 0)
+                putStrLn ("Adding " <> Tasks.prettyPrint (event, 0))
                 Config.saveTasks "./tasks.txt.new" (event : fromMaybe [] storedTasks)
                 oldFileExists <- doesFileExist "./tasks.txt.old"
                 if oldFileExists then
