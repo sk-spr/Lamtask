@@ -78,7 +78,7 @@ executable Lamtask
 
     -- Other library packages from which modules are imported.
     build-depends:
-        base ^>=4.15.1.0,
+        base ^>=4.15.0.0,
         Lamtask,
         directory,
         unix-time
