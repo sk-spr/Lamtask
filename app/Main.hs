@@ -2,6 +2,8 @@ module Main where
 import System.Environment (getArgs)
 import System.Directory (renameFile, removeFile, doesFileExist)
 import Data.Maybe (fromMaybe)
+import Data.Version (showVersion)
+import Paths_Lamtask  (version)
 import  qualified Data.UnixTime (UnixTime(..), getUnixTime)
 import qualified Tasks
 import qualified Config
@@ -48,77 +50,86 @@ timeStampOrZero str = case Tasks.getTimeStamp str of
 printHelp :: IO ()
 printHelp = do
     putStrLn "Usage:"
-    putStrLn "Lamtask -> print current tasks"
-    putStrLn "Lamtask add-todo description -> create a simple todo with description"
-    putStrLn "Lamtask add-timed hh:mm/[d]d.[m]m.[yyyy] description -> create a timed todo with due date and description"
-    putStrLn "Lamtask add-event hh:mm/[d]d.[m]m.[yyyy] hh:mm/[d]d.[m]m.[yyyy] description-> create a calendar-style event from the first time to the second time with description"
-    putStrLn "Lamtask show-all -> print all tasks, current or not"
-    putStrLn "Lamtask remove n -> remove task number n"
-    putStrLn "Lamtask remove all -> purge every task"
+    putStrLn "Lamtask f=taskfile -> print current tasks"
+    putStrLn "Lamtask f=taskfile add-todo description -> create a simple todo with description"
+    putStrLn "Lamtask f=taskfile add-timed hh:mm/[d]d.[m]m.[yyyy] description -> create a timed todo with due date and description"
+    putStrLn "Lamtask f=taskfile add-event hh:mm/[d]d.[m]m.[yyyy] hh:mm/[d]d.[m]m.[yyyy] description-> create a calendar-style event from the first time to the second time with description"
+    putStrLn "Lamtask f=taskfile show-all -> print all tasks, current or not"
+    putStrLn "Lamtask f=taskfile remove n -> remove task number n"
+    putStrLn "Lamtask f=taskfile remove all -> purge every task"
 
 main :: IO ()
 main = do
     args <- getArgs
-    storedTasks <- Config.getStoredTasks "./tasks.txt"
     let
-        switcharoo =
+        switcharoo :: FilePath -> IO ()
+        switcharoo baseFileName=
             do
-                oldFileExists <- doesFileExist "./tasks.txt.old"
+                oldFileExists <- doesFileExist (baseFileName <>".old")
                 if oldFileExists then
                     do
-                        removeFile "./tasks.txt.old"
+                        removeFile (baseFileName <> ".old")
                     else
                         do
                             putStrLn "Backing up for the first time..."
-                tasksExists <- doesFileExist "./tasks.txt"
+                tasksExists <- doesFileExist baseFileName
                 if tasksExists then
                     do
-                        renameFile "./tasks.txt" "./tasks.txt.old"
+                        renameFile baseFileName (baseFileName <> ".old")
                     else
                         do
                             putStrLn "Starting new tasks.txt..."
-                renameFile "./tasks.txt.new" "./tasks.txt"
-        saveEvent event =
+                renameFile (baseFileName<>".new") baseFileName
+        saveEvent event fileName taskList =
             do
                 putStrLn ("Adding " <> Tasks.prettyPrint (event, 0))
-                Config.saveTasks "./tasks.txt.new" (event : fromMaybe [] storedTasks)
-                switcharoo
+                Config.saveTasks (fileName <> ".new") (event : fromMaybe [] taskList)
+                switcharoo fileName
     case args of
-            [] ->
-                printTaskList storedTasks
-            ["add-todo", desc] ->do
-                saveEvent (Tasks.Todo desc)
-            ["add-event", start, end, desc] ->
-                let
-                    startTime = timeStampOrZero start
-                    endTime = timeStampOrZero end
-                    event = Tasks.Event startTime endTime desc
-                in
-                    saveEvent event
-            ["add-timed", due, desc] -> do
-                saveEvent (Tasks.TimedTodo (timeStampOrZero due) desc)
-            ["show-all"] ->
-                case storedTasks of
-                    Just t -> do
-                        putStrLn $ mconcat $ map Tasks.prettyPrint $ indexize t
+        ['f':'=':filename] ->do
+            oldTasks <- Config.getStoredTasks filename
+            printTaskList oldTasks
+        ['f':'=':filename, "add-todo", desc] -> do
+            oldTasks <- Config.getStoredTasks filename
+            saveEvent (Tasks.Todo desc) filename oldTasks
+        ['f':'=':filename, "add-event", start, end, desc] ->
+            let
+                startTime = timeStampOrZero start
+                endTime = timeStampOrZero end
+                event = Tasks.Event startTime endTime desc
+            in do
+                oldTasks <- Config.getStoredTasks filename
+                saveEvent event filename oldTasks
+        ['f':'=':filename, "add-timed", due, desc] -> do
+            oldTasks <- Config.getStoredTasks filename
+            saveEvent (Tasks.TimedTodo (timeStampOrZero due) desc) filename oldTasks
+        ['f':'=':filename, "show-all"] ->do
+            oldTasks <- Config.getStoredTasks filename
+            case oldTasks of
+                Just t -> do
+                    putStrLn $ mconcat $ map Tasks.prettyPrint $ indexize t
+                Nothing ->
+                    putStrLn "No stored tasks."
+        ['f':'=':filename, "remove", n] ->
+            let
+                num = readMaybe n :: Maybe Int
+            in
+                case num of
+                    Just i ->
+                            let
+                                indexed = indexize . fromMaybe []
+                            in do
+                                oldTasks <- Config.getStoredTasks filename
+                                putStrLn ("Removing entry " <> show i <> "...")
+                                Config.saveTasks (filename <> ".new") $ map fst $ filter (\(_, idx) -> idx /= i) (indexed oldTasks)
+                                switcharoo filename
                     Nothing ->
-                        putStrLn "No stored tasks."
-            ["remove", n] ->
-                let
-                    num = readMaybe n :: Maybe Int
-                in
-                    case num of
-                        Just i ->
-                                let
-                                    indexed = indexize $ fromMaybe [] storedTasks
-                                in do
-                                    putStrLn ("Removing entry " <> show i <> "...")
-                                    Config.saveTasks "./tasks.txt.new" $ map fst $ filter (\(_, idx) -> idx /= i) indexed
-                                    switcharoo
-                        Nothing ->
-                            if n == "all" then do
-                                putStrLn "Removing task list entirely."
-                                removeFile "./tasks.txt"
-                            else
-                                putStrLn "Could not parse the number you entered, make sure it is a valid index with \"Lamtask show-all\""
-            _ -> printHelp
+                        if n == "all" then do
+                            putStrLn "Removing task list entirely."
+                            removeFile filename
+                        else
+                            putStrLn "Could not parse the number you entered, make sure it is a valid index with \"Lamtask show-all\""
+        ["help"] -> do
+            putStrLn ("Lamtask version " <> showVersion version)
+            printHelp
+        _ -> printHelp
