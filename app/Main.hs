@@ -32,18 +32,20 @@ printTaskList tasks = do
                     Tasks.Todo _ -> True
                     Tasks.TimedTodo {} -> True
                     _ -> False) indexed
+                printOut :: [(Tasks.Task, Int)] -> IO ()
+                printOut evs= putStrLn $ mconcat $ map (Tasks.prettyPrint  (Tasks.UnixTimeStamp (fromIntegral currentUnixSeconds))) evs
             case (events, todos) of
                 ([],[]) -> putStrLn "Nothing coming up and no current Todos!"
                 (events, todos) -> do
                     putStrLn "Events coming up: "
-                    putStrLn $ mconcat $ map Tasks.prettyPrint events
+                    printOut events
                     putStrLn "Todos: "
-                    putStrLn $ mconcat $ map Tasks.prettyPrint todos
+                    printOut todos
         Nothing ->
             putStrLn "No tasks, yay!"
 
-timeStampOrZero :: String -> Tasks.UnixTimeStamp
-timeStampOrZero str = case Tasks.getTimeStamp str of
+timeStampOrZero :: String -> Int -> Tasks.UnixTimeStamp
+timeStampOrZero str now= case Tasks.getTimeStamp str now of
     Right stamp -> stamp
     _ -> Tasks.UnixTimeStamp 0
 
@@ -61,6 +63,7 @@ printHelp = do
 main :: IO ()
 main = do
     args <- getArgs
+    (Data.UnixTime.UnixTime (CTime currentUnixSeconds) _) <- Data.UnixTime.getUnixTime
     let
         switcharoo :: FilePath -> IO ()
         switcharoo baseFileName=
@@ -82,9 +85,10 @@ main = do
                 renameFile (baseFileName<>".new") baseFileName
         saveEvent event fileName taskList =
             do
-                putStrLn ("Adding " <> Tasks.prettyPrint (event, 0))
+                putStrLn ("Adding " <> Tasks.prettyPrint (Tasks.UnixTimeStamp (fromIntegral currentUnixSeconds)) (event, 0))
                 Config.saveTasks (fileName <> ".new") (event : fromMaybe [] taskList)
                 switcharoo fileName
+        now = fromIntegral currentUnixSeconds
     case args of
         ['f':'=':filename] ->do
             oldTasks <- Config.getStoredTasks filename
@@ -94,20 +98,20 @@ main = do
             saveEvent (Tasks.Todo desc) filename oldTasks
         ['f':'=':filename, "add-event", start, end, desc] ->
             let
-                startTime = timeStampOrZero start
-                endTime = timeStampOrZero end
+                startTime = timeStampOrZero start now
+                endTime = timeStampOrZero end now
                 event = Tasks.Event startTime endTime desc
             in do
                 oldTasks <- Config.getStoredTasks filename
                 saveEvent event filename oldTasks
         ['f':'=':filename, "add-timed", due, desc] -> do
             oldTasks <- Config.getStoredTasks filename
-            saveEvent (Tasks.TimedTodo (timeStampOrZero due) desc) filename oldTasks
+            saveEvent (Tasks.TimedTodo (timeStampOrZero due now) desc) filename oldTasks
         ['f':'=':filename, "show-all"] ->do
             oldTasks <- Config.getStoredTasks filename
             case oldTasks of
                 Just t -> do
-                    putStrLn $ mconcat $ map Tasks.prettyPrint $ indexize t
+                    putStrLn $ mconcat $ map (Tasks.prettyPrint (Tasks.UnixTimeStamp (fromIntegral currentUnixSeconds))) $ indexize t
                 Nothing ->
                     putStrLn "No stored tasks."
         ['f':'=':filename, "remove", n] ->

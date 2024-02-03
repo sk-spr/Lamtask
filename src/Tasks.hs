@@ -1,3 +1,4 @@
+{-# LANGUAGE InstanceSigs #-}
 module Tasks where
 
 import Data.Maybe (maybeToList, fromMaybe)
@@ -9,6 +10,14 @@ data DDate = DDate Int Int Int deriving Show
 
 data Date = Date DSecs DDate deriving Show
 newtype UnixTimeStamp = UnixTimeStamp Int deriving Show
+
+instance Eq UnixTimeStamp where
+    (==) :: UnixTimeStamp -> UnixTimeStamp -> Bool
+    (==) (UnixTimeStamp a) (UnixTimeStamp b) = a == b
+
+instance Ord UnixTimeStamp where
+    (<=) :: UnixTimeStamp -> UnixTimeStamp -> Bool
+    (<=) (UnixTimeStamp a) (UnixTimeStamp b) = a <= b
 
 data Task =
     Event UnixTimeStamp UnixTimeStamp String
@@ -37,14 +46,14 @@ splitInner ctx s delim =
                 Nothing ->
                     splitInner (Just [c]) cs delim
 
-getTimeStamp :: String -> Either String UnixTimeStamp
-getTimeStamp dateTimeStr =
+getTimeStamp :: String -> Int -> Either String UnixTimeStamp
+getTimeStamp dateTimeStr now=
     let
         parts = split dateTimeStr '/'
     in
         case parts of
             [time, date] ->
-                case (parseTime time, parseDate date) of
+                case (parseTime time, parseDate date now) of
                     (Right t, Right d) ->
                         Right $ georgianDateToUnix (Date t d)
                     (Left _, Right d) ->
@@ -156,11 +165,11 @@ unixToGeorgianDate (UnixTimeStamp secs) =
 
 -- thank you for visiting the HACKY ZONE, come again!
 
-getCurrentYear :: () -> Int
-getCurrentYear () = 2024 -- todo implement
+getCurrentYear :: Int -> Int
+getCurrentYear = getYear 1970
 
-parseDate :: String -> Either String DDate
-parseDate s =
+parseDate :: String -> Int -> Either String DDate
+parseDate s now=
     let
         dateFromMaybes d m y =
             let
@@ -172,7 +181,7 @@ parseDate s =
                     (Just days, Just months, Just years) ->
                         Right (DDate days months years)
                     (Just days, Just months, Nothing) ->
-                        Right (DDate days months (getCurrentYear ()))
+                        Right (DDate days months (getCurrentYear now))
                     _ -> Left "Could not parse date."
         parts = split s '.'
     in
@@ -198,7 +207,7 @@ parseTaskList txts =
             parseTask currentLine : parseTaskList rest
 
 parseTask :: String -> Task
-parseTask line= 
+parseTask line=
     case split line '°' of
         [taskType, taskDetails] ->
             (case taskType of
@@ -214,7 +223,7 @@ parseTaskEvent :: String -> Task
 parseTaskEvent s =
     case split s '$' of
         [startTime, endTime, description] ->
-            let 
+            let
                 start = UnixTimeStamp $ fromMaybe 0 (readMaybe startTime :: Maybe Int)
                 end = UnixTimeStamp $ fromMaybe 0 (readMaybe endTime :: Maybe Int)
             in
@@ -228,7 +237,7 @@ parseTaskTimedTodo :: String -> Task
 parseTaskTimedTodo s =
     case split s '$' of
         [dueDate, description] ->
-            let 
+            let
                 due = UnixTimeStamp $ fromMaybe 0 (readMaybe dueDate :: Maybe Int)
             in
                 TimedTodo due description
@@ -261,19 +270,19 @@ prettyDate :: DDate -> String
 prettyDate (DDate day month year) =
     show day <> "." <> show month <> "." <> show year
 
-prettyPrint :: (Task,  Int) -> String
-prettyPrint (t, n)= "("<>show n<>") ->" <>
+prettyPrint :: UnixTimeStamp -> (Task,  Int) -> String
+prettyPrint currentTime (t, n)= "("<>show n<>") ->" <>
     case t of
         Event startStamp endStamp description ->
-            let 
+            let
                 Date start startDate = unixToGeorgianDate startStamp
                 Date end endDate = unixToGeorgianDate endStamp
             in
-                prettyTime start <> " on " <> prettyDate startDate <> " to " <> prettyTime end <> " on " <> prettyDate endDate <> " is an event called \"" <> description <> "\".\n"
+                prettyTime start <> " on " <> prettyDate startDate <> " to " <> prettyTime end <> " on " <> prettyDate endDate <> " is an" <>(if  startStamp < currentTime then " ongoing" else "") <> " event called \"" <> description <> "\".\n"
         Todo description ->
             "To do: " <> description <> "\n"
         TimedTodo dueStamp description ->
             let
                 Date dueTime dueDate = unixToGeorgianDate dueStamp
             in
-                "To do: " <> description <> " due " <> prettyTime dueTime <> " on " <> prettyDate dueDate <> "\n"
+               (if dueStamp < currentTime then "Overdue " else "") <>"To do: " <> description <> " due " <> prettyTime dueTime <> " on " <> prettyDate dueDate <> "\n"
